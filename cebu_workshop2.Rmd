@@ -47,16 +47,12 @@ Participants may leave this workshop with:
 
 Machine learning is a powerful tool for text mining. Especially finding the hidden representation of the textual data, which is impossible if we just use regular expressions or simple NLP techniques. 
 
-In this workshop, we will use machine learning algorithms to perform topic modeling, word embedding and extracting hidden representation of the text using deep autoencoder. We will use R language for the whole workshop.  
-
-Again, we will use the  [**PhysioNet Deidentified Medical Text**](https://physionet.org/works/DeidentifiedMedicalText/) as our example for this workshop. 
+In this workshop, we will use machine learning algorithms to perform topic modeling, word embedding and extracting hidden representation of the text using deep autoencoder. We will use the iDASH dataset and R language for the whole workshop. First we will import the iDASH data and labels.  
 
 ```{r}
-data <- readChar("id.txt", file.info("id.txt")$size)
-data <- gsub("\n\n\\|\\|\\|\\|END_OF_RECORD\n\nSTART_OF_RECORD=[0-9]+\\|\\|\\|\\|[0-9]+\\|\\|\\|\\|\n", " [split] ", data)
-data <- gsub("\n\n\\|\\|\\|\\|END_OF_RECORD\n\n", "", data)
-data <- strsplit(data, " \\[split\\] ")
-data <- data[[1]]
+idash <- read.table("idash.txt", sep = "\t", header = FALSE, comment.char="", stringsAsFactors = FALSE)
+data <- idash$V1
+label <- as.factor(idash$V2)
 ```
 
 
@@ -96,29 +92,38 @@ corpus <- tm_map(corpus, removeWords, c(stopwords("english")))
 corpus <- tm_map(corpus, stemDocument)
 
 dtm <- DocumentTermMatrix(corpus)
+rownames(dtm) <- 1:nrow(idash)
 ```
 
-In the LDA algorithm we need to assign the number of possible natural topics to `LDA` function. For example, we set `k = 2` to create a two-topic LDA model.
+In the LDA algorithm we need to assign the number of possible natural topics to `LDA` function. For example, we set `k = 6` to create a six-topic LDA model. You may apply `topics` function to get the topic of each document, and use `terms` function to see keywords of each topic (here we show top 30 keywords).   
 
 ```{r}
 library(topicmodels)
 
-fit.lda <- LDA(dtm, k = 2, control = list(seed = 777))
+lda_model <- LDA(dtm, k = 6, control = list(seed = 777))
+
+lda_topics <- topics(lda_model, 1)
+lda_topics[1:50]
+lda_keywords <- data.frame(terms(lda_model, 30), stringsAsFactors = FALSE)
+lda_keywords
 ```
 
-We also take the advantage of `tidytext` package to identify how how words are associated with topics and how topics are associated with documents. `tidy` function with the argument `matrix = "beta"` returns the per-topic-per-word probabilities (word-topic probabilities), called "beta", from the LDA model. The `tidy` function may also gives you the per-document-per-topic probabilities (document-topic probabilities, called "gamma") if you use the argument `matrix = "gamma"`. For example, in this sample LDA model we see that the term `aaa` belongs to topic 1 (from "beta"), and document 4 belongs to topic 2 (from "gamma", probability > 0.5).  
+As you can see, topic 1 seems like gastroenterology, topic 2 or 6 might be neurology, topic 3 is psychology, topic 5 is cardiology. Topic 4 is unclear.  
+
+(Optional) We may also take the advantage of `tidytext` package to identify how how words are associated with topics and how topics are associated with documents. `tidy` function with the argument `matrix = "beta"` returns the per-topic-per-word probabilities (word-topic probabilities), called "beta", from the LDA model. The `tidy` function may also gives you the per-document-per-topic probabilities (document-topic probabilities, called "gamma") if you use the argument `matrix = "gamma"`. For example, in this sample LDA model we see that the term `aaaa` belongs to topic 2 (from "beta"), and document 2 belongs to topic 2 (from "gamma", probability > 0.9996).  
 
 ```{r}
 library(tidytext)
-tidy(fit.lda, matrix = "beta")
-tidy(fit.lda, matrix = "gamma")
+beta <- tidy(lda_model, matrix = "beta")
+beta[1:20, ]
+gamma <- tidy(lda_model, matrix = "gamma")
+gamma[c(1:5, (431+1):(431+5), (431*2+1):(431*2+5), (431*3+1):(431*3+5)),]
 ```
 
-The LDA-derived topic/cluster may be the natural label for machine classification task (supervised learning). We run a simple decision tree as an example.  
-
+The LDA-derived topic/cluster may be the natural label for machine classification task (supervised learning). We run a simple decision tree as an example. The accuracy is 0.7874, which is not that bad.   
 ```{r}
 d <- data.frame(as.matrix(dtm))
-d$label <- as.factor(ifelse(tidy(fit.lda, matrix = "gamma")$gamma[1:2431] > 0.5, 1, 2))
+d$label <- label
 
 library(caret)
 library(rpart)
@@ -128,7 +133,7 @@ training <- d[ inTraining, ]
 testing <- d[-inTraining, ]
 
 model <- rpart(label~., data=training)
-summary(model)
+#summary(model)
 plot(model, uniform=TRUE)
 text(model, use.n=TRUE)
 
@@ -138,16 +143,54 @@ pred <- predict(model, tst, type="class")
 confusionMatrix(testing$label, pred)
 ```
 
+### Exercise
+
+Again, we use the [**PhysioNet Deidentified Medical Text**](https://physionet.org/works/DeidentifiedMedicalText/) as our example for the exercise. 
+
+```{r}
+x <- readChar("id.txt", file.info("id.txt")$size)
+x <- gsub("\n\n\\|\\|\\|\\|END_OF_RECORD\n\nSTART_OF_RECORD=[0-9]+\\|\\|\\|\\|[0-9]+\\|\\|\\|\\|\n", " [split] ", x)
+x <- gsub("\n\n\\|\\|\\|\\|END_OF_RECORD\n\n", "", x)
+x <- strsplit(x, " \\[split\\] ")
+x <- x[[1]]
+```
+
+Try to use LDA to find the topic words (assuming that there are 5 topics), and find the topic of each document.
+
+### Answer
+
+```{r}
+library(tm)
+library(SnowballC)
+library(topicmodels)
+
+corpus <- Corpus(VectorSource(x))
+corpus <- tm_map(corpus, tolower)
+corpus <- tm_map(corpus, PlainTextDocument)
+corpus <- tm_map(corpus, removePunctuation)
+corpus <- tm_map(corpus, removeNumbers)
+corpus <- tm_map(corpus, stripWhitespace)
+corpus <- tm_map(corpus, removeWords, c(stopwords("english")))
+corpus <- tm_map(corpus, stemDocument)
+dtm <- DocumentTermMatrix(corpus)
+
+lda_model <- LDA(dtm, k = 5, control = list(seed = 777))
+
+lda_keywords <- data.frame(terms(lda_model, 10), stringsAsFactors = FALSE)
+lda_keywords
+
+x_df <- as.data.frame(x)
+x_df$label <- topics(lda_model, 1)
+```
+
 
 ## Word Embedding for Word Vector Representation
 
-Word embedding is a natural language modeling method for word vector representation. Instead of very sparse one-hot representation or frequency count representation (bag-of-words), word embedding approach may encode each word of the large corpus into a vector, with semantics and linguistic regularities that bag-of-words can't achieve. The most famous example of word embedding might be the following operation:
+Word embedding is a natural language modeling method for word vector representation. Simply to day, it is a technique to represent words as vectors. Instead of very sparse one-hot representation or frequency count representation (bag-of-words), word embedding approach may encode each word of the large corpus into a vector, with semantics and linguistic regularities that bag-of-words can't achieve. One of the most famous examples of word embedding might be the following operation:
 
 $$ vector('paris') - vector('france') + vector('germany') = vector('berlin') $$
 
-Please check [wikipedia introduction](https://en.wikipedia.org/wiki/Word_embedding) for more background knowledge about word embedding. The most popular neural word embedding algorithms, [word2vec](https://en.wikipedia.org/wiki/Word2vec) and [GloVe (Global Vectors for Word Representation)](https://nlp.stanford.edu/projects/glove/), were developed by Mikolov at Google and Pennington at Stanford, respectively. In Python, you can use `gensim` or `tensorflow` for word2vec implementation. However, we'd like to introduce `text2vec` package, which is a R package that using C++ as the backend for GloVe implementation.  
-
-`text2vec` will help you process raw data through the following steps:
+Please check [wikipedia introduction](https://en.wikipedia.org/wiki/Word_embedding) for more background knowledge of word embedding. The most popular neural word embedding algorithms, [word2vec](https://en.wikipedia.org/wiki/Word2vec) and [GloVe (Global Vectors for Word Representation)](https://nlp.stanford.edu/projects/glove/), were developed by Mikolov at Google and Pennington at Stanford, respectively. In Python, you can use `gensim` or `tensorflow` for word2vec implementation. Now, we'd like to introduce `text2vec` package, which is a R package that using C++ as the backend for GloVe implementation. `text2vec` will help you process raw data through the following steps:
 
 1. Create a vocabulary set that we want to learn word vectors
 
@@ -194,15 +237,40 @@ word_vectors <- glove$get_word_vectors()
 Once we get word vectors, we can try to do something similar to paris-france+germany operation through calculating the cosine similarity between word vectors.
 
 ```{r}
-unknown <- word_vectors["chest", , drop = FALSE] - 
-  word_vectors["ct", , drop = FALSE] + 
-  word_vectors["mri", , drop = FALSE]
+unknown <- word_vectors["mitral", , drop = FALSE] - 
+  word_vectors["left", , drop = FALSE] + 
+  word_vectors["right", , drop = FALSE]
 cos_sim = sim2(x = word_vectors, y = unknown, method = "cosine", norm = "l2")
 
-head(sort(cos_sim[,1], decreasing = TRUE), 5)
+head(sort(cos_sim[, 1], decreasing = TRUE), 5)
 ```
 
-Exercise: Try to tune the `skip_grams_window`, `word_vectors_size` and `n_iter` to optimize your result!
+### Exercise
+
+Build the word vector model for **PhysioNet Deidentified Medical Text** (saved in variable `x`). Try to tune the `skip_grams_window`, `word_vectors_size` and `n_iter` to optimize your result!
+
+### Answer
+
+```{r}
+library(text2vec)
+tokens <- space_tokenizer(x)
+it <- itoken(tokens, progressbar = FALSE)
+vocab <- create_vocabulary(it)
+vocab <- prune_vocabulary(vocab, term_count_min = 5)
+vectorizer <- vocab_vectorizer(vocab, 
+                               grow_dtm = FALSE, 
+                               skip_grams_window = 5)
+tcm <- create_tcm(it, vectorizer)
+word_embedding_size <- 200
+glove = GlobalVectors$new(word_vectors_size = word_embedding_size, vocabulary = vocab, x_max = 10)
+glove$fit(tcm, n_iter = 20)
+word_vectors <- glove$get_word_vectors()
+unknown <- word_vectors["heart", , drop = FALSE] - 
+  word_vectors["left", , drop = FALSE] + 
+  word_vectors["right", , drop = FALSE]
+cos_sim = sim2(x = word_vectors, y = unknown, method = "cosine", norm = "l2")
+head(sort(cos_sim[, 1], decreasing = TRUE), 10)
+```
 
 
 ## Learning Hidden Representation using Deep Neural Network
@@ -234,7 +302,7 @@ library(keras)
 
 maxlen <- 200
 encoding_dim <- 32
-batch_size <- 30
+batch_size <- 10
 epochs <- 20
 ```
 
@@ -274,14 +342,14 @@ model %>%
 
 model %>% compile(
   loss = "binary_crossentropy",
-  optimizer = "rmsprop"
+  optimizer = "adam",
+  metrics = "accuracy"
 )
 
 summary(model)
 ```
 
 Then we use our data to fit the model, `x_train` as training data and `x_test` for validation. You may change `batch_size` and `epochs` to get better results. This model fitting step may take minutes to run.  
-
 ```{r}
 history <- model %>% fit(
   x_train, x_train,
@@ -305,19 +373,33 @@ dim(intermediate_output)
 head(intermediate_output)
 ```
 
-t-SNE is an awesome dimension reduction algorithm if you want to visualize how the hidden representation looks like in the vector space. The R implentation of t-SNE algorithm is in `Rtsne` package.  
+We can visualize how the documents locate in the vector space using principal component analysis (PCA) (using `princomp` function, `scores[, 1:2]` for first two principal components).  
+
+```{r}
+colors <- rainbow(length(unique(as.factor(label))))
+
+pca <- princomp(intermediate_output)$scores[, 1:2]
+plot(pca, t='n', main="pca")
+text(pca, labels=label, col=colors[label])
+```
+
+t-SNE is an awesome dimension reduction algorithm if you want to visualize how the hidden representation looks like in the vector space. The R implentation of t-SNE algorithm is in `Rtsne` package. Let's see how it performs comparing to PCA.  
 
 ```{r}
 library(Rtsne)
 
-tsne <- Rtsne(as.matrix(intermediate_output), dims = 5, perplexity = 30, 
+tsne <- Rtsne(as.matrix(intermediate_output), dims = 2, perplexity = 30, 
               verbose = TRUE, max_iter = 500)
-plot(tsne$Y, col='red')
+
+plot(tsne$Y, t='n', main="tsne")
+text(tsne$Y, labels=label, col=colors[label])
 ```
 
-Exercise: The autoencoder can be extended to not only single hidden layer. Let's try to implement a 3 and 5 hidden layers instead of just one (encode/decode 2 or 3 times, respectively). The output of each layer can be an unique feature representation. However, in general we usually pick up the middle-most layer with smallest size of dimension as the representation we want.  
+### Exercise
 
-Answer: 
+The autoencoder can be extended to not only single hidden layer. Let's try to implement a 3 and 5 hidden layers instead of just one (encode/decode 2 or 3 times, respectively). The output of each layer can be an unique feature representation. However, in general we usually pick up the middle-most layer with smallest size of dimension as the representation we want.  
+
+### Answer
 
 ```{r}
 model <- keras_model_sequential()
@@ -329,10 +411,10 @@ model %>%
   layer_dense(name = 'd2', units = 128, activation = 'relu') %>%
   layer_dense(name = 'd3', units = maxlen, activation = 'sigmoid')
 
-
 model %>% compile(
   loss = "binary_crossentropy",
-  optimizer = "rmsprop"
+  optimizer = "rmsprop",
+  metrics = "accuracy"
 )
 
 summary(model)
@@ -349,6 +431,12 @@ layer_name <- 'e3'
 intermediate_layer_model <- keras_model(inputs = model$input,
                                         outputs = get_layer(model, layer_name)$output)
 intermediate_output <- predict(intermediate_layer_model, x_train)
+
+tsne <- Rtsne(as.matrix(intermediate_output), dims = 2, perplexity = 30, 
+              verbose = TRUE, max_iter = 500)
+
+plot(tsne$Y, t='n', main="tsne")
+text(tsne$Y, labels=label, col=colors[label])
 ```
 
 
@@ -360,7 +448,7 @@ intermediate_output <- predict(intermediate_layer_model, x_train)
 # embedding_weight[is.na(embedding_weight)] <- 0
 # embedding_weight[, 1:3] <- NULL
 # 
-# 
+#
 # model <- keras_model_sequential()
 # model %>%
 #   layer_embedding(length(tok$word_index) + 1, word_embedding_size, input_length = maxlen) %>%
@@ -368,7 +456,7 @@ intermediate_output <- predict(intermediate_layer_model, x_train)
 #   #                 weights=embedding_weight, input_length=maxlen, trainable=FALSE) %>%
 #   layer_dropout(0.2) %>%
 #   layer_conv_1d(
-#     filters = 250, kernel_size = 3, 
+#     filters = 250, kernel_size = 3,
 #     padding = "valid", activation = "relu", strides = 1
 #   ) %>%
 #   layer_global_max_pooling_1d() %>%
@@ -377,9 +465,24 @@ intermediate_output <- predict(intermediate_layer_model, x_train)
 #   layer_activation(name = "activation", "relu") %>%
 #   layer_dense(1) %>%
 #   layer_activation("sigmoid")
+# 
+# 
+# model %>% compile(
+#   loss = "binary_crossentropy",
+#   optimizer = "adam",
+#   metrics = "accuracy"
+# )
+# 
+# model %>%
+#   fit(
+#     x_train, label[1:nrow(x_train)],
+#     batch_size = batch_size,
+#     epochs = epochs,
+#     validation_data = list(x_test, label[(nrow(x_train)+1):nrow(data_idx)])
+#   )
 
 # K <- keras::backend()
-# get_activations <- K$`function`(list(get_layer(model, 'e1')$input, K$learning_phase()), 
+# get_activations <- K$`function`(list(get_layer(model, 'e1')$input, K$learning_phase()),
 #                                 list(get_layer(model, 'e3')$output))
 # activations <- data.frame(get_activations(list(x_train, 1)))
 ```

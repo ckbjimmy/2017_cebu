@@ -51,7 +51,7 @@ For the definition and background theory of regular expression, please refer to 
 
 
 ## Pattern matching
-### (courtesy by Dr. Matthieu Komorowsky)
+#### (courtesy by Dr. Matthieu Komorowsky)
 
 To visualize how regular expressions work, we will use the website: [https://regex101.com/](https://regex101.com/). Please paste the following text into the “Test String” search box:
 
@@ -224,11 +224,12 @@ neuro <- gsub("(.*Neuro:|.*NEURO:|.*Neuro=|.*Neuro-)(.*?)(\\.$|\n.*)", "\\2", da
 head(neuro)
 ```
 
-Exercise: Can you extract the information about cardiovascular examination? 
+### Exercise
 
+Can you extract the information about cardiovascular examination? 
 p.s. the matching patterns include `CV:`, `C/V:`, `CV=`, `CV-`, `cv:`
 
-Answer: 
+### Answer
 
 ```{r}
 has_cv <- grepl("(CV:|C/V:|CV=|CV-|cv:)", data, perl=TRUE)
@@ -248,6 +249,14 @@ str_extract_all(item, "[0-9]+")
 ## Natural Language Processing
 
 In the previous section, we used regular expressions for pattern matching. Here we'd like to introduce some natural language processing (NLP) techniques to implement linguistic and terminological approaches for text mining. For example, n-grams, paragraph and sentence tokenization, parts of speech (POS), and named entity recognition (NER). If you use Python, there are powerful free open-source libraries [Natural Langauge Toolkit (NLTK)](http://www.nltk.org/) and [spaCy](https://spacy.io/) for you to perform NLP. Yet R still has some good libraries for NLP. We will use the packages `tm` (for text processing) and `SnowballC` (for word stemming) in this workshop. 
+
+Here we downloaded publicly available 431 clinical notes and reports from [iDASH Clinical Notes and Reports Repository](https://idash-data.ucsd.edu/community/45/), and annotated the documents with the suitable document theme by two clinicians (Weng, 2017). 
+
+```{r}
+idash <- read.table("idash.txt", sep = "\t", header = FALSE, comment.char="", stringsAsFactors = FALSE)
+data <- idash$V1
+label <- as.factor(idash$V2)
+```
 
 In NLP, we usually do the following steps for lexical normalization:  
 
@@ -275,47 +284,28 @@ corpus <- tm_map(corpus, stemDocument)
 
 tokenize the paragraph into words, sentences, and n-grams. (The n-grams will be used in the chapter on document similarity.) Next we will extract the names of people and places from the document. Finally we will use those techniques on the journals or autobiographies of three itinerant preachers from the nineteenth-century United States to see which people they mention in common and which places they visited. For other kinds of text-analysis problems, see the chapters on document similarity and on topic modeling.
 
-In our task we don't need POS tagging or NER to identify names, locations, organizations, etc. (since medical texts usually needs to be deidentified before analysis). However, please check [this webpage](https://rpubs.com/lmullen/nlp-chapter) if you are interested in performing NER in R. Please also check [this stackoverflow](https://stackoverflow.com/questions/30738974/rjava-load-error-in-rstudio-r-after-upgrading-to-osx-yosemite) if you want to import `openNLP` package but meet the `rJava` error while using Mac OSX Yosemite.  
-
-```{r eval=F}
-txt <- c("This is a short tagging example, by John Doe.",
-         "Too bad OpenNLP is so slow on large texts.")
-
-extractPOS <- function(x, thisPOSregex) {
-    x <- as.String(x)
-    wordAnnotation <- annotate(x, list(Maxent_Sent_Token_Annotator(), Maxent_Word_Token_Annotator()))
-    POSAnnotation <- annotate(x, Maxent_POS_Tag_Annotator(), wordAnnotation)
-    POSwords <- subset(POSAnnotation, type == "word")
-    tags <- sapply(POSwords$features, '[[', "POS")
-    thisPOSindex <- grep(thisPOSregex, tags)
-    tokenizedAndTagged <- sprintf("%s/%s", x[POSwords][thisPOSindex], tags[thisPOSindex])
-    untokenizedAndTagged <- paste(tokenizedAndTagged, collapse = " ")
-    untokenizedAndTagged
-}
-
-lapply(txt, extractPOS, "NN")
-```
+(Optional) In our task we don't need POS tagging or NER to identify names, locations, organizations, etc. (since medical texts usually needs to be deidentified before analysis). However, please check [this webpage](https://rpubs.com/lmullen/nlp-chapter) if you are interested in performing NER in R. Please also check [this stackoverflow](https://stackoverflow.com/questions/30738974/rjava-load-error-in-rstudio-r-after-upgrading-to-osx-yosemite) if you want to import `openNLP` package but meet the `rJava` error while using Mac OSX Yosemite.  
 
 After lexical normalization, the next step will be generating a document-term matrix for further analyses and machine learning tasks. This is a relatively computationally intensive task, and will occupy tons of memory (especially using R) if you don't use the sparse matrix. Thankfully, `tm` package provides a function `DocumentTermMatrix` (or `TermDocumentMatrix`, if you need the reverse one) to generate the document-term matrix. You may even ask R to perform [term frequency-inverse document frequency (tf-idf) weighting](https://nlp.stanford.edu/IR-book/html/htmledition/tf-idf-weighting-1.html), which may identify the importance of words, or [N-gram algorithm](https://en.wikipedia.org/wiki/N-gram) while creating document-term matrix. In the following section, you can observe the difference between (1) default bag-of-words, (2) tf-idf, (3) bigram (n-gram, n=2), and (4) unigram (bag-of-words) + bigram (n-gram, n=1 or 2) approaches.  
 
 ```{r}
 dtm <- DocumentTermMatrix(corpus)
-head(findFreqTerms(dtm, lowfreq=100))
+findFreqTerms(dtm, lowfreq=300)
 
 dtm_tfidf <- DocumentTermMatrix(corpus,
                           control=list(weighting=function(x) weightTfIdf(x, normalize=TRUE),
                                         stopwords=TRUE))
-head(findFreqTerms(dtm_tfidf, lowfreq=100))
+findFreqTerms(dtm_tfidf, lowfreq=2.5)
 
 BigramTokenizer <- function(x) 
   unlist(lapply(ngrams(words(x), 2), paste, collapse = " "), use.names = FALSE)
 dtm_bigram <- DocumentTermMatrix(corpus, control = list(tokenize = BigramTokenizer))
-head(findFreqTerms(dtm_bigram, lowfreq=100))
+findFreqTerms(dtm_bigram, lowfreq=100)
 
 UniBigramTokenizer <- function(x) 
   unlist(lapply(ngrams(words(x), 1:2), paste, collapse = " "), use.names = FALSE)
 dtm_unibigram <- DocumentTermMatrix(corpus, control = list(tokenize = UniBigramTokenizer))
-head(findFreqTerms(dtm_unibigram, lowfreq=100))
+findFreqTerms(dtm_unibigram, lowfreq=300)
 ```
 
 We may also remove some less frequent words from the document-term matrix using `removeSparseTerms` function (here we preserve 99.5% of words).
@@ -325,12 +315,12 @@ dtm <- removeSparseTerms(dtm, 0.995)
 ```
 
 
-# Exploration and Visualization
+## Exploration and Visualization
 
 Once we have generated the document-term matrix, we can use it for all kinds of analyses, from exploratory analysis, clutering to statistical modeling. For example, we can use `findAssocs` to find words that have correlation > 0.05 with the word "like".  
 
 ```{r}
-findAssocs(dtm, "like", corlimit=0.05)
+findAssocs(dtm, "ventricular", corlimit=0.5)
 ```
 
 We may also use `wordcloud` package to generate word cloud, or use `ggplot2` to create a frequency count barplot. For word cloud, you need to convert the document-term matrix to a real data frame as an input.  
@@ -338,13 +328,13 @@ We may also use `wordcloud` package to generate word cloud, or use `ggplot2` to 
 ```{r}
 library(wordcloud)
 df <- suppressWarnings(data.frame(as.matrix(dtm)))
-wordcloud(colnames(df), colSums(df), scale=c(5, 1), max.words=100, min.freq=10, 
+wordcloud(colnames(df), colSums(df), scale=c(5, 1), max.words=50, min.freq=10, 
           color=brewer.pal(6, "Dark2"), vfont=c("sans serif", "plain"))
 
 library(ggplot2)
 freq <- sort(colSums(as.matrix(dtm)), decreasing=TRUE)
 wf <- data.frame(word=names(freq), freq=freq)
-p <- ggplot(subset(wf, freq > 30), aes(word, freq)) 
+p <- ggplot(subset(wf, freq > 300), aes(word, freq)) 
 p <- p + geom_bar(stat="identity")
 p <- p + theme(axis.text.x=element_text(angle=45, hjust=1))
 p
@@ -353,15 +343,52 @@ p
 
 ## Clustering
 
-The document-term matrix can be an input of different machine learning algorithms. For example, the unsupervised learning algorithm, k-means. 
+The document-term matrix can be an input of different machine learning algorithms. For example, the unsupervised learning algorithm, k-means. However, the plot shows that the performance of clustering is not that good. We will use other language modeling techniques to make it better in the next workshop.  
 
 ```{r}
 library(cluster)
 library(fpc)
 
 d <- dist(t(dtm), method="euclidian")
-km <- kmeans(d, 5)
+km <- kmeans(d, 6)
 clusplot(as.matrix(d), km$cluster, color=T, shade=T, labels=2, lines=0)
+```
+
+
+### Exercise
+
+Now we try to play with the [**PhysioNet Deidentified Medical Text**](https://physionet.org/works/DeidentifiedMedicalText/). 
+
+```{r}
+x <- readChar("id.txt", file.info("id.txt")$size)
+x <- gsub("\n\n\\|\\|\\|\\|END_OF_RECORD\n\nSTART_OF_RECORD=[0-9]+\\|\\|\\|\\|[0-9]+\\|\\|\\|\\|\n", " [split] ", x)
+x <- gsub("\n\n\\|\\|\\|\\|END_OF_RECORD\n\n", "", x)
+x <- strsplit(x, " \\[split\\] ")
+x <- x[[1]]
+```
+
+Please use this dataset to create an n-grams model with unigram + bigram + trigram, find 
+1. How many terms/phrases has frequency >= 50?
+2. How many terms/phrases has correlation > 0.6 with the term "ventricular"?
+
+### Answer
+
+```{r}
+library(tm)
+library(SnowballC)
+corpus <- Corpus(VectorSource(x))
+corpus <- tm_map(corpus, tolower)
+corpus <- tm_map(corpus, PlainTextDocument)
+corpus <- tm_map(corpus, removePunctuation)
+corpus <- tm_map(corpus, removeNumbers)
+corpus <- tm_map(corpus, stripWhitespace)
+corpus <- tm_map(corpus, removeWords, c(stopwords("english"), "apple"))
+corpus <- tm_map(corpus, stemDocument)
+tok <- function(x) 
+  unlist(lapply(ngrams(words(x), 1:3), paste, collapse = " "), use.names = FALSE)
+dtm <- DocumentTermMatrix(corpus, control = list(tokenize = tok))
+length(findFreqTerms(dtm, lowfreq=200))
+findAssocs(dtm, "ventricular", corlimit=0.6)
 ```
 
 
