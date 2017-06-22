@@ -1,0 +1,370 @@
+---
+title: "Workshop 1 - Basic Text Processing and Natural Language Procesing"
+author: "Wei-Hung Weng"
+date: "July 5, 2017"
+output: 
+  html_document: 
+    fig_height: 8
+    fig_width: 10
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+setwd("~/Google Drive/_cebu/")  # need to set their own path or see below
+
+.packages <- c("stringr", "tm", "SnowballC", "wordcloud", "ggplot2", "cluster", "fpc")
+
+.inst <- .packages %in% installed.packages()
+if(length(.packages[!.inst]) > 0) {
+  install.packages(.packages[!.inst], repos = "http://cran.rstudio.com")
+}
+lapply(.packages, library, character.only=TRUE)
+```
+
+
+## Objectives
+
+Participants may leave this workshop with:
+
+- Understand how to use basic regular expression syntax
+- Able to apply regular expression to extract features
+- Learn how to do preprocess textual raw data and transform into n-grams representation for downstream analysis
+
+
+## Instructions
+
+**Before beginning**, please test to see if the Rmd file will compile on your system by clicking the "Knit HTML button" in R studio above. 
+
+
+## Introduction of Text Mining
+
+Much of the data in the electronic health record (EHR) is not well structured. For example, the user-generated data, such as clinical notes, radiology reports, pathology reports, and the up-to-date scientific literature in PubMed, are usually in the semi-strucutred or unstructured natural language text. Unlike the structured data, text mining techniques are neccessary for the less structured data to parse and extract useful (or specific) information from them for further analysis and data modeling.  
+
+In this workshop, we will first learn how to use regular expressions to do pattern matching in the text. Next, we will utilize all the information in the text using bag-of-words and n-grams representations. Results of these techniques can be used for downstream applications, such as exploratory analysis or machine learning. We will use R language for the whole workshop.  
+
+
+## Basic regular expression in R 
+
+Regular expressions are a method of searching for patterns and are implemented in many languages. The specific syntax used in each language may vary, but the concepts are the same (courtesy by Dr. Matthieu Komorowsky). Here we would use R to do regular expression for pattern matching.
+
+For the definition and background theory of regular expression, please refer to the introduction slides [(http://web.mit.edu/hackl/www/lab/turkshop/slides/regex-cheatsheet.pdf)](http://web.mit.edu/hackl/www/lab/turkshop/slides/regex-cheatsheet.pdf).  
+
+
+## Pattern matching
+### (courtesy by Dr. Matthieu Komorowsky)
+
+To visualize how regular expressions work, we will use the website: [https://regex101.com/](https://regex101.com/). Please paste the following text into the “Test String” search box:
+
+```
+LISINOpril 40 MG PO Daily
+captopril 6.25 MG PO TID
+lisinopril 40 mg PO Daily
+LISINOPRIL
+april
+pril
+labetalol
+Propanolol 1PC STAT
+April 5th
+Lisinopril captopril
+```
+
+and try the following regex rules:
+
+1. `pril`
+2. `*pril`
+3. `[a-z]*pril`
+4. `[A-Za-z]*pril`
+5. `[A-Za-z]*pril ` (with a space character after `pril`)
+
+Observe the result. What pattern in the text can you match using the above five rules? What if you want to match only (1) two items with lisinopril, or (2) two beta blockers (end with -lol)?  
+
+Now let's go to R. We first store our data into a vector `item`.  
+
+```{r}
+item <- c("LISINOpril 40 MG PO Daily", "lisinopril 40 mg PO Daily", "captopril 6.25 MG PO TID",
+          "LISINOPRIL", "april", "pril", "labetalol", "Propanolol 1PC STAT", 
+          "Today is April 5th", "Lisinopril captopril")
+```
+
+There are several functions in R related to regular expressions. `grep` function will give you the index of items, which are matched by your regex rule, in the vector. `grepl` function will return you `TRUE` or `FALSE` instead. `regexpr` will answer where/how long the regex rule matches your item (-1 means not-matched), and `gregexpr` return you an exact same thing but in a list format.
+
+```{r}
+grep("pril", item, perl=TRUE)
+grepl("pril", item, perl=TRUE)
+regexpr("pril", item, perl=TRUE)
+gregexpr("pril", item, perl=TRUE)
+```
+
+However, you may want to use `regexpr` and `regmatches` together to get matched strings. We use `regexpr` to get the location of matching, and use `regmatches` to extract the matched strings.  
+
+```{r}
+re <- regexpr("[A-Za-z]*pril", item, perl=TRUE)
+regmatches(item, re)
+```
+
+Exercise: What if you just want to match lower cases words end with `pril`?
+
+```{r}
+re <- regexpr("TYPE_IN_YOUR_ANSWER", item, perl=TRUE)
+regmatches(item, re)
+```
+
+Answer: `[a-z]*pril`
+
+Sometimes we want to replace the specific strings for text cleaning. We can use `sub` function to replace the first occured matched string, or use `gsub` to replace ALL matched strings. Here we try to replace all -pril medication to `[DELETED]`.  
+
+```{r}
+sub("[A-Za-z]*pril", "[DELETED]", "Lisinopril captopril")
+gsub("[A-Za-z]*pril", "[DELETED]", "Lisinopril captopril")
+```
+
+`gsub` function can also be used for extracting the specific string. For example, the dosage of medication. The first argument of `gsub` function is matching patterns, and the second argument means that the specific pattern you want to extract. In this example, we want to extract the second pattern among the consecutive three specific patterns:  
+
+1. `[A-Za-z]* ` (zero - many alphabets, following a space character)
+2. `[0-9]+` (one - many digits)
+3. ` [MGmg].*` (MG or mg followed by a space character, and following any strings)
+
+```{r}
+gsub("([A-Za-z]* )([0-9]+)( [MGmg].*)", "\\2", 
+     c("lisinopril 40 MG PO Daily", "captopril 5 mg PO BID"))
+```
+
+Exercise: Identify/Extract following items from the short text `Indication: Endocarditis. Valvular heart disease.`
+
+1. Identify whether the short text includes the pattern `Indication: `
+2. Extract the string after `Indication: `
+3. Extract the first indication `Endocarditis`
+4. Extract the second indication `Valvular heart disease`  
+
+Answer:  
+
+```{r}
+text <- "Indication: Endocarditis. Valvular heart disease."
+
+grepl("Indication: (.*)", text)
+gsub("(Indication: )(.*)(.*)", "\\2", text)
+gsub("(Indication: )([aA-zZ]+)(.*)", "\\2", text)
+gsub("(Indication: [aA-zZ]+. )([aA-zZ ]+)(.*)", "\\2", text)
+```
+
+Exercise: We want to extract some variables from 
+
+```
+Indication: Endocarditis. Valvular heart disease.
+Height: (in) 64
+Weight (lb): 170
+BSA (m2): 1.83 m2
+BP (mm Hg): 92/61
+```
+
+For example, we can extract the weight (`170`) using 
+
+```{r}
+text <- "
+Indication: Endocarditis. Valvular heart disease.
+Height: (in) 64
+Weight (lb): 170
+BSA (m2): 1.83 m2
+BP (mm Hg): 92/61
+"
+
+grepl("Weight \\(lb\\): (.*?)\n", text)
+gsub("(.*Weight \\(lb\\): )([0-9]+)(\n.*)", "\\2", text)
+```
+
+The double-backslash is [**escape character**](https://en.wikipedia.org/wiki/Escape_character) in R, which is neccessary if your pattern has any punctuations because punctuations have different meanings in programming languages, and you need to use escape character (here the double-backslash) to force R to recognize the punctuation as a character rather than the matching syntax. More details in the [stackoverflow post](https://stackoverflow.com/questions/27721008/how-do-i-deal-with-special-characters-like-in-my-regex).  
+
+Now try to extract the following numbers:
+
+1. the height (`64`)
+2. systolic blood pressure (`92`)
+
+```{r}
+grepl("Height: \\(in\\) (.*?)\n", text)
+gsub("(.*Height: \\(in\\) )([0-9]{2})(\n.*)", "\\2", text)
+gsub("(.*BP \\(mm Hg\\): )([0-9]+)(/[0-9]+\n.*)", "\\2", text)
+```
+
+Now that we have a basic understanding of how regular expressions work, we will apply it to a note file. We'd like to load the real data into R environment. The data we used here is [**PhysioNet Deidentified Medical Text**](https://physionet.org/works/DeidentifiedMedicalText/) maintained by MIT Laboratory of Computational Physiology. The single file (`id.txt`) includes 2434 nursing records in free text. We used regular expression to match the pattern for splitting a huge single file into 2434 notes. 
+
+```{r}
+data <- readChar("id.txt", file.info("id.txt")$size)
+data <- gsub("\n\n\\|\\|\\|\\|END_OF_RECORD\n\nSTART_OF_RECORD=[0-9]+\\|\\|\\|\\|[0-9]+\\|\\|\\|\\|\n", " [split] ", data)
+data <- gsub("\n\n\\|\\|\\|\\|END_OF_RECORD\n\n", "", data)
+data <- strsplit(data, " \\[split\\] ")
+data <- data[[1]]
+```
+
+If you are interested in this pattern matching process for data splitting, you may open the `id.txt` and see that the format of notes is:  
+
+```
+START_OF_RECORD=number||||number||||
+
+...context...
+
+||||END_OF_RECORD
+```
+
+Therefore we used the regular expression to replace all strings with the pattern of  `\n\n\\|\\|\\|\\|END_OF_RECORD\n\nSTART_OF_RECORD=[0-9]+\\|\\|\\|\\|[0-9]+\\|\\|\\|\\|\n` into `[split]`, and used the string `[split]` as an indicator to split the file. 
+
+Then, we want to extract the information of neurological examination from nursing notes. After quickly going through the raw data, we found that there are some patterns, which may be useful for extracting neurological exam data: 
+
+```
+Neuro: ...(the data we want)... .
+NEURO: ...(the data we want)... .
+Neuro= ...(the data we want)... .
+Neuro- ...(the data we want)... .
+```
+
+Therefore, we can first use `grepl` to identify the index of matched strings. Then we use `gsub` to extract our targeted data. The bar (`|`) means OR operation. The result can be used as a feature for further analysis.  
+
+```{r}
+has_neuro <- grepl("(Neuro:|NEURO:|Neuro=|Neuro-)", data, perl=TRUE)
+neuro <- gsub("(.*Neuro:|.*NEURO:|.*Neuro=|.*Neuro-)(.*?)(\\.$|\n.*)", "\\2", data[has_neuro])
+head(neuro)
+```
+
+Exercise: Can you extract the information about cardiovascular examination? 
+
+p.s. the matching patterns include `CV:`, `C/V:`, `CV=`, `CV-`, `cv:`
+
+Answer: 
+
+```{r}
+has_cv <- grepl("(CV:|C/V:|CV=|CV-|cv:)", data, perl=TRUE)
+cv <- gsub("(.*CV:|.*C/V:|.*CV=|.*CV-|.*cv:)(.*?)(\\.$|\n.*)", "\\2", data[has_cv])
+head(cv)
+```
+
+In addition, you may also try `str_replace_all` and `str_extract_all` functions in `stringr` package to replace or extract features you want using regular expressions.  
+
+```{r}
+library(stringr)
+str_replace_all(item, ".*pril.*", "[DELETED]")
+str_extract_all(item, "[0-9]+")
+```
+
+
+## Natural Language Processing
+
+In the previous section, we used regular expressions for pattern matching. Here we'd like to introduce some natural language processing (NLP) techniques to implement linguistic and terminological approaches for text mining. For example, n-grams, paragraph and sentence tokenization, parts of speech (POS), and named entity recognition (NER). If you use Python, there are powerful free open-source libraries [Natural Langauge Toolkit (NLTK)](http://www.nltk.org/) and [spaCy](https://spacy.io/) for you to perform NLP. Yet R still has some good libraries for NLP. We will use the packages `tm` (for text processing) and `SnowballC` (for word stemming) in this workshop. 
+
+In NLP, we usually do the following steps for lexical normalization:  
+
+1. convert to lower cases
+2. remove punctuation
+3. remove numbers
+4. remove white space
+5. remove stopwords (very common and non-specific words such as a, the, is, ...)
+6. perform word stemming (e.g. computers, computer, computing, compute -> comput)
+7. tokenize the corpus into words
+
+```{r}
+library(tm)
+library(SnowballC)
+
+corpus <- Corpus(VectorSource(data))
+corpus <- tm_map(corpus, tolower)
+corpus <- tm_map(corpus, PlainTextDocument)
+corpus <- tm_map(corpus, removePunctuation)
+corpus <- tm_map(corpus, removeNumbers)
+corpus <- tm_map(corpus, stripWhitespace)
+corpus <- tm_map(corpus, removeWords, c(stopwords("english"), "apple"))
+corpus <- tm_map(corpus, stemDocument)
+```
+
+tokenize the paragraph into words, sentences, and n-grams. (The n-grams will be used in the chapter on document similarity.) Next we will extract the names of people and places from the document. Finally we will use those techniques on the journals or autobiographies of three itinerant preachers from the nineteenth-century United States to see which people they mention in common and which places they visited. For other kinds of text-analysis problems, see the chapters on document similarity and on topic modeling.
+
+In our task we don't need POS tagging or NER to identify names, locations, organizations, etc. (since medical texts usually needs to be deidentified before analysis). However, please check [this webpage](https://rpubs.com/lmullen/nlp-chapter) if you are interested in performing NER in R. Please also check [this stackoverflow](https://stackoverflow.com/questions/30738974/rjava-load-error-in-rstudio-r-after-upgrading-to-osx-yosemite) if you want to import `openNLP` package but meet the `rJava` error while using Mac OSX Yosemite.  
+
+```{r eval=F}
+txt <- c("This is a short tagging example, by John Doe.",
+         "Too bad OpenNLP is so slow on large texts.")
+
+extractPOS <- function(x, thisPOSregex) {
+    x <- as.String(x)
+    wordAnnotation <- annotate(x, list(Maxent_Sent_Token_Annotator(), Maxent_Word_Token_Annotator()))
+    POSAnnotation <- annotate(x, Maxent_POS_Tag_Annotator(), wordAnnotation)
+    POSwords <- subset(POSAnnotation, type == "word")
+    tags <- sapply(POSwords$features, '[[', "POS")
+    thisPOSindex <- grep(thisPOSregex, tags)
+    tokenizedAndTagged <- sprintf("%s/%s", x[POSwords][thisPOSindex], tags[thisPOSindex])
+    untokenizedAndTagged <- paste(tokenizedAndTagged, collapse = " ")
+    untokenizedAndTagged
+}
+
+lapply(txt, extractPOS, "NN")
+```
+
+After lexical normalization, the next step will be generating a document-term matrix for further analyses and machine learning tasks. This is a relatively computationally intensive task, and will occupy tons of memory (especially using R) if you don't use the sparse matrix. Thankfully, `tm` package provides a function `DocumentTermMatrix` (or `TermDocumentMatrix`, if you need the reverse one) to generate the document-term matrix. You may even ask R to perform [term frequency-inverse document frequency (tf-idf) weighting](https://nlp.stanford.edu/IR-book/html/htmledition/tf-idf-weighting-1.html), which may identify the importance of words, or [N-gram algorithm](https://en.wikipedia.org/wiki/N-gram) while creating document-term matrix. In the following section, you can observe the difference between (1) default bag-of-words, (2) tf-idf, (3) bigram (n-gram, n=2), and (4) unigram (bag-of-words) + bigram (n-gram, n=1 or 2) approaches.  
+
+```{r}
+dtm <- DocumentTermMatrix(corpus)
+head(findFreqTerms(dtm, lowfreq=100))
+
+dtm_tfidf <- DocumentTermMatrix(corpus,
+                          control=list(weighting=function(x) weightTfIdf(x, normalize=TRUE),
+                                        stopwords=TRUE))
+head(findFreqTerms(dtm_tfidf, lowfreq=100))
+
+BigramTokenizer <- function(x) 
+  unlist(lapply(ngrams(words(x), 2), paste, collapse = " "), use.names = FALSE)
+dtm_bigram <- DocumentTermMatrix(corpus, control = list(tokenize = BigramTokenizer))
+head(findFreqTerms(dtm_bigram, lowfreq=100))
+
+UniBigramTokenizer <- function(x) 
+  unlist(lapply(ngrams(words(x), 1:2), paste, collapse = " "), use.names = FALSE)
+dtm_unibigram <- DocumentTermMatrix(corpus, control = list(tokenize = UniBigramTokenizer))
+head(findFreqTerms(dtm_unibigram, lowfreq=100))
+```
+
+We may also remove some less frequent words from the document-term matrix using `removeSparseTerms` function (here we preserve 99.5% of words).
+
+```{r}
+dtm <- removeSparseTerms(dtm, 0.995)
+```
+
+
+# Exploration and Visualization
+
+Once we have generated the document-term matrix, we can use it for all kinds of analyses, from exploratory analysis, clutering to statistical modeling. For example, we can use `findAssocs` to find words that have correlation > 0.05 with the word "like".  
+
+```{r}
+findAssocs(dtm, "like", corlimit=0.05)
+```
+
+We may also use `wordcloud` package to generate word cloud, or use `ggplot2` to create a frequency count barplot. For word cloud, you need to convert the document-term matrix to a real data frame as an input.  
+
+```{r}
+library(wordcloud)
+df <- suppressWarnings(data.frame(as.matrix(dtm)))
+wordcloud(colnames(df), colSums(df), scale=c(5, 1), max.words=100, min.freq=10, 
+          color=brewer.pal(6, "Dark2"), vfont=c("sans serif", "plain"))
+
+library(ggplot2)
+freq <- sort(colSums(as.matrix(dtm)), decreasing=TRUE)
+wf <- data.frame(word=names(freq), freq=freq)
+p <- ggplot(subset(wf, freq > 30), aes(word, freq)) 
+p <- p + geom_bar(stat="identity")
+p <- p + theme(axis.text.x=element_text(angle=45, hjust=1))
+p
+```
+
+
+## Clustering
+
+The document-term matrix can be an input of different machine learning algorithms. For example, the unsupervised learning algorithm, k-means. 
+
+```{r}
+library(cluster)
+library(fpc)
+
+d <- dist(t(dtm), method="euclidian")
+km <- kmeans(d, 5)
+clusplot(as.matrix(d), km$cluster, color=T, shade=T, labels=2, lines=0)
+```
+
+
+## Conclusion
+
+Thank you for chekcing out this workshop. We hope that you have some ideas of using regular expression and basic NLP techniques to process textual data in R. The next workshop will focus more on machine learning techniques for natural language.  

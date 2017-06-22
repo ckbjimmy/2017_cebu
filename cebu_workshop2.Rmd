@@ -1,0 +1,386 @@
+---
+title: "Workshop 2 - Machine Learning-Based Approach: Topic Modeling / Word Embedding / Learning Hidden Representation using Deep Neural Network in R"
+author: "Wei-Hung Weng"
+date: "July 5, 2017"
+output: 
+  html_document: 
+    fig_height: 8
+    fig_width: 10
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+setwd("~/Google Drive/_cebu/")  # need to set their own path or see below
+
+.packages <- c("tm", "SnowballC", "topicmodels", "tidytext", "caret", "rpart",
+               "text2vec", "Rtsne")
+
+.inst <- .packages %in% installed.packages()
+if(length(.packages[!.inst]) > 0) {
+  install.packages(.packages[!.inst], repos = "http://cran.rstudio.com")
+}
+lapply(.packages, library, character.only=TRUE)
+
+if ("keras" %in% rownames(installed.packages()) == FALSE) {
+  devtools::install_github("rstudio/keras")
+  library(keras)
+  install_tensorflow()
+}
+```
+
+
+## Objectives
+
+Participants may leave this workshop with:
+
+- Able to use R to perform the topic modeling algorithm on the textual data
+- Understand the concept of word embedding representation and apply it in R
+- Use R and deep neural network to learn a hidden representation from text
+
+
+## Instructions
+
+**Before beginning**, please test to see if the Rmd file will compile on your system by clicking the "Knit HTML button" in R studio above. 
+
+
+## Machine Learning Approaches for Text
+
+Machine learning is a powerful tool for text mining. Especially finding the hidden representation of the textual data, which is impossible if we just use regular expressions or simple NLP techniques. 
+
+In this workshop, we will use machine learning algorithms to perform topic modeling, word embedding and extracting hidden representation of the text using deep autoencoder. We will use R language for the whole workshop.  
+
+Again, we will use the  [**PhysioNet Deidentified Medical Text**](https://physionet.org/works/DeidentifiedMedicalText/) as our example for this workshop. 
+
+```{r}
+data <- readChar("id.txt", file.info("id.txt")$size)
+data <- gsub("\n\n\\|\\|\\|\\|END_OF_RECORD\n\nSTART_OF_RECORD=[0-9]+\\|\\|\\|\\|[0-9]+\\|\\|\\|\\|\n", " [split] ", data)
+data <- gsub("\n\n\\|\\|\\|\\|END_OF_RECORD\n\n", "", data)
+data <- strsplit(data, " \\[split\\] ")
+data <- data[[1]]
+```
+
+
+## Topic Modeling for Finding Document Themes
+
+Topic modeling is an unsupervised text classification technique to summarize and organize large amount of textual information. The topic modeling algorithms can help us identify the words/terms which can be grouped into the same cluster (refer as "topic") from a collection of documents, discover hidden topics among the documents, annotate/label the documents by the identified groups (topics), and therefore understand, summarize, separate, and organize bunch of textual data. In other words, topic modeling may help us find out a hidden data representation of the document.  
+
+We choose to use the Latent Dirichlet allocation (LDA) algorithm, which is a common and popular mathematical topic modeling method developed by Dr. David Blei. LDA can estimate both of the following at the same time: (1) each word in the document collection is attributable to one of the document's topics, and (2) each document (a set of words) is viewed as a mixture of topics that are present in the document collection. For example:
+
+Document 1: a cardiology admission note, 80% cardiology, 15% nephrology, 4% pulmonology, 1% neurology
+Document 2: a kidney biopsy report, 50% nephrology, 30% rheumatology, 15% infectious disease, 5% neurology
+Document 3: a chest CT report, 50% pulmonology, 40% cardiology, 5% oncology, 5% infectious disease  
+...
+
+Here each clinical document has multiple topics with different proportion. the medical specialties can be regarded as the natural topics of the document collection. If we dive into keywords of each topic, you may see:
+
+Cardiology: ventricle, ekg, atrial, catheterization, cabg, edema, ...
+Nephrology: hemodialysis, renal, edema, nephritis, sonography, dyspnea, ...
+Pulmonology: dyspnea, lung, bronchitis, adenocarcinoma, egfr, edema, ...
+Infectious disease: hiv, hepatitis, viral, fever, leukocytosis, ...
+...
+
+To be noticed, words can be shared across topics.  
+
+We can use the `LDA` function in `topicmodels` package to generate a topic model. The `LDA` function takes a document-term matrix as an input, which can be generated using `tm` package that we introduced in the end of the previous workshop.  
+
+```{r}
+library(tm)
+library(SnowballC)
+corpus <- Corpus(VectorSource(data))
+corpus <- tm_map(corpus, tolower)
+corpus <- tm_map(corpus, PlainTextDocument)
+corpus <- tm_map(corpus, removePunctuation)
+corpus <- tm_map(corpus, removeNumbers)
+corpus <- tm_map(corpus, stripWhitespace)
+corpus <- tm_map(corpus, removeWords, c(stopwords("english")))
+corpus <- tm_map(corpus, stemDocument)
+
+dtm <- DocumentTermMatrix(corpus)
+```
+
+In the LDA algorithm we need to assign the number of possible natural topics to `LDA` function. For example, we set `k = 2` to create a two-topic LDA model.
+
+```{r}
+library(topicmodels)
+
+fit.lda <- LDA(dtm, k = 2, control = list(seed = 777))
+```
+
+We also take the advantage of `tidytext` package to identify how how words are associated with topics and how topics are associated with documents. `tidy` function with the argument `matrix = "beta"` returns the per-topic-per-word probabilities (word-topic probabilities), called "beta", from the LDA model. The `tidy` function may also gives you the per-document-per-topic probabilities (document-topic probabilities, called "gamma") if you use the argument `matrix = "gamma"`. For example, in this sample LDA model we see that the term `aaa` belongs to topic 1 (from "beta"), and document 4 belongs to topic 2 (from "gamma", probability > 0.5).  
+
+```{r}
+library(tidytext)
+tidy(fit.lda, matrix = "beta")
+tidy(fit.lda, matrix = "gamma")
+```
+
+The LDA-derived topic/cluster may be the natural label for machine classification task (supervised learning). We run a simple decision tree as an example.  
+
+```{r}
+d <- data.frame(as.matrix(dtm))
+d$label <- as.factor(ifelse(tidy(fit.lda, matrix = "gamma")$gamma[1:2431] > 0.5, 1, 2))
+
+library(caret)
+library(rpart)
+set.seed(123)
+inTraining <- createDataPartition(d$label, p=0.7, list=F)
+training <- d[ inTraining, ]
+testing <- d[-inTraining, ]
+
+model <- rpart(label~., data=training)
+summary(model)
+plot(model, uniform=TRUE)
+text(model, use.n=TRUE)
+
+tst <- testing
+tst$label = NULL
+pred <- predict(model, tst, type="class")
+confusionMatrix(testing$label, pred)
+```
+
+
+## Word Embedding for Word Vector Representation
+
+Word embedding is a natural language modeling method for word vector representation. Instead of very sparse one-hot representation or frequency count representation (bag-of-words), word embedding approach may encode each word of the large corpus into a vector, with semantics and linguistic regularities that bag-of-words can't achieve. The most famous example of word embedding might be the following operation:
+
+$$ vector('paris') - vector('france') + vector('germany') = vector('berlin') $$
+
+Please check [wikipedia introduction](https://en.wikipedia.org/wiki/Word_embedding) for more background knowledge about word embedding. The most popular neural word embedding algorithms, [word2vec](https://en.wikipedia.org/wiki/Word2vec) and [GloVe (Global Vectors for Word Representation)](https://nlp.stanford.edu/projects/glove/), were developed by Mikolov at Google and Pennington at Stanford, respectively. In Python, you can use `gensim` or `tensorflow` for word2vec implementation. However, we'd like to introduce `text2vec` package, which is a R package that using C++ as the backend for GloVe implementation.  
+
+`text2vec` will help you process raw data through the following steps:
+
+1. Create a vocabulary set that we want to learn word vectors
+
+    * the words should not be too uncommon: use the `term_count_min` argument in `prune_vocabulary` function 
+
+```{r}
+library(text2vec)
+tokens <- space_tokenizer(data)
+it <- itoken(tokens, progressbar = FALSE)
+vocab <- create_vocabulary(it)
+vocab <- prune_vocabulary(vocab, term_count_min = 5)
+```
+
+2. Next, we construct a sparse term-cooccurence matrix (TCM)
+
+    * you may decide the size of skip grams window via `skip_grams_window` argument
+    * the concept of `skip_grams_window = 5` can be imagined as: the central word can be inferred from left 5 and right 5 words
+
+```{r}
+vectorizer <- vocab_vectorizer(vocab, 
+                               grow_dtm = FALSE, 
+                               skip_grams_window = 5)
+tcm <- create_tcm(it, vectorizer)
+```
+
+3. Factorize the TCM using parallel stochastic gradient descent algorithm in GloVe, then fit the GloVe model  
+
+    * `word_vectors_size` is an important argument that it will decide the output dimension of your word vectors, here we assign size of 200
+    * it will use all CPU cores on your machine but you can still specify it via `RcppParallel::setThreadOptions(numThreads = CORE_NUMBER)`
+
+```{r}
+word_embedding_size <- 200
+
+glove = GlobalVectors$new(word_vectors_size = word_embedding_size, vocabulary = vocab, x_max = 10)
+glove$fit(tcm, n_iter = 20)
+```
+
+4. Extract the word vectors
+
+```{r}
+word_vectors <- glove$get_word_vectors()
+```
+
+Once we get word vectors, we can try to do something similar to paris-france+germany operation through calculating the cosine similarity between word vectors.
+
+```{r}
+unknown <- word_vectors["chest", , drop = FALSE] - 
+  word_vectors["ct", , drop = FALSE] + 
+  word_vectors["mri", , drop = FALSE]
+cos_sim = sim2(x = word_vectors, y = unknown, method = "cosine", norm = "l2")
+
+head(sort(cos_sim[,1], decreasing = TRUE), 5)
+```
+
+Exercise: Try to tune the `skip_grams_window`, `word_vectors_size` and `n_iter` to optimize your result!
+
+
+## Learning Hidden Representation using Deep Neural Network
+
+Hidden layers of neural net can learn an interesting respresentation of the data. Hence, we can use the hidden layer representation for many things, for example dimensionality reduction and feature learning (though you may not understand what's the meaning of those features). In this section we'd like to stack multiple layers (multilayer autoencoder) to learn the representation of data.
+
+We will not focus on the concepts and algorithms of deep learning in this workshop. You may visit [this Quora thread](https://www.quora.com/What-is-deep-learning) to get more thoughts about deep learning if you are not familiar with it. If you want to learn more, Stanford provides [a detailed deep learning tutorial](http://deeplearning.stanford.edu/tutorial/), and Goodfellow et al. also wrote a very good (but difficult) [Deep Learning textbook](http://www.deeplearningbook.org/) for extensive study.
+
+Here we choose Keras to build deep learning model due to its simplicity. Keras is a high-level API for neural network implementation, which is originally implemented in Python (but now also in R, thanks to RStudio team). It uses Google TensorFlow (in Python) as the backend in [R interface to Keras](https://rstudio.github.io/keras/). 
+
+Please rerun the following code if your R Studio can't find Keras.
+
+```
+devtools::install_github("rstudio/keras")
+library(keras)
+install_tensorflow()
+```
+
+In this section, we want to implement a simple three layer autoencoder (only one hidden layer) for encoding hidden representation. Please visit [Stanford UFLDL Tutorial: Autoencoders](http://ufldl.stanford.edu/tutorial/unsupervised/Autoencoders/), or read the [Deep Learning Book Chapter 14: Autoencoders](http://www.deeplearningbook.org/contents/autoencoders.html) if you want to learn more theories about autoencoder.
+
+![Figure](workshop_autoenc.png)
+
+**An autoencoder with one hidden layer ($L_2$), courtesy by [Stanford UFLDL Tutorial: Autoencoders](http://ufldl.stanford.edu/tutorial/unsupervised/Autoencoders/)**
+
+First, we define some parameters before building the model. The `maxlen` should be equal or less than your input dimension. For example, we set up `200` since that most of the nursing notes have less than 200 words. The `encoding_dim` is the number of the output dimension. We choose `32` to get the 32-dimension vector for each docuemnt. `batch_size` and `epochs` are training parameters, you may change them to get better results.  
+
+```{r}
+library(keras)
+
+maxlen <- 200
+encoding_dim <- 32
+batch_size <- 30
+epochs <- 20
+```
+
+Next, we need to prepare the input data for deep neural network. Free text needs to be converted to index sequence for Keras. `text_tokenizer` and `fit_text_tokenizer` functions help us tokenize our raw data, and `texts_to_sequences` function converts our textual data to a list of index sequences. Since lengths of nursing notes are all different, we use `pad_sequences` to pad the sequences (pad the sequences with 0 to the left), and let all notes (now index sequences) have all the same length. You may use `head(data_idx)` to see how the data looks like after transformation. 
+
+```{r}
+tok <- keras::text_tokenizer(2000, lower = TRUE, split = " ", char_level = FALSE)
+keras::fit_text_tokenizer(tok, data)
+data_idx <- keras::texts_to_sequences(tok, data)
+
+data_idx <- data_idx %>%
+  pad_sequences(maxlen = maxlen)
+
+head(data_idx)
+```
+
+We split the data into training (70%) and validation sets (30%). 
+
+```{r}
+inTraining <- 1:floor(nrow(data_idx) * 0.7)
+x_train <- data_idx[inTraining, ]
+x_test <- data_idx[-inTraining, ]
+```
+
+Now we can build a neural network structure with one hidden layer! We use `keras_model_sequential` function to initialize a new Keras model. You need to do it everytime before constructing your new model.  
+
+In R version of Keras, you can use `%>%` to stack the neural layer to your model. Imaging it's empty in the beginning, and you stack layer `e1`, then `d1` on it. Here the `e1` layer is the encoder, which input your list of index sequences, and output a hidden representation (with the dimension size you've assigned). The `d1` layer is the decoder, which may take the hidden representation generated by encoder, and try to reconstruct the original information (your input, with dimension size = `maxlen`).  
+
+The algorithm wants to minimize the difference (technically we say 'cost') between your original input and the result of reconstruction. Therefore we use `rmsprop` as an optimizer, and evaluate the cost by `binary_crossentropy` for this important step. There are also many different optimizers, such as `sgd`, `adam`, `adadelta`, ... that you can do experiment. Now the model is generated, and you can use `summary` function to see how it looks like.  
+
+```{r}
+model <- keras_model_sequential()
+
+model %>%
+  layer_dense(name = 'e1', units = encoding_dim, activation = 'relu', input_shape = maxlen) %>%
+  layer_dense(name = 'd1', units = maxlen, activation = 'sigmoid')
+
+model %>% compile(
+  loss = "binary_crossentropy",
+  optimizer = "rmsprop"
+)
+
+summary(model)
+```
+
+Then we use our data to fit the model, `x_train` as training data and `x_test` for validation. You may change `batch_size` and `epochs` to get better results. This model fitting step may take minutes to run.  
+
+```{r}
+history <- model %>% fit(
+  x_train, x_train,
+  batch_size = batch_size,
+  epochs = epochs,
+  validation_data = list(x_test, x_test)
+)
+
+plot(history)
+```
+
+Once the autoencoder is constructed and fine-tuned by the data, we can now extract the hidden representation from the model. The hidden representation is the output of encoder, which is `e1` layer. We may use `keras_model` and `predict` functions to get the representation and save it in the variable `intermediate_output`.  
+
+```{r}
+layer_name <- 'e1'
+
+intermediate_layer_model <- keras_model(inputs = model$input,
+                                        outputs = get_layer(model, layer_name)$output)
+intermediate_output <- predict(intermediate_layer_model, x_train)
+dim(intermediate_output)
+head(intermediate_output)
+```
+
+t-SNE is an awesome dimension reduction algorithm if you want to visualize how the hidden representation looks like in the vector space. The R implentation of t-SNE algorithm is in `Rtsne` package.  
+
+```{r}
+library(Rtsne)
+
+tsne <- Rtsne(as.matrix(intermediate_output), dims = 5, perplexity = 30, 
+              verbose = TRUE, max_iter = 500)
+plot(tsne$Y, col='red')
+```
+
+Exercise: The autoencoder can be extended to not only single hidden layer. Let's try to implement a 3 and 5 hidden layers instead of just one (encode/decode 2 or 3 times, respectively). The output of each layer can be an unique feature representation. However, in general we usually pick up the middle-most layer with smallest size of dimension as the representation we want.  
+
+Answer: 
+
+```{r}
+model <- keras_model_sequential()
+model %>%
+  layer_dense(name = 'e1', units = 128, activation = 'relu', input_shape = maxlen) %>%
+  layer_dense(name = 'e2', units = 64, activation = 'relu') %>%
+  layer_dense(name = 'e3', units = encoding_dim, activation = 'relu') %>%
+  layer_dense(name = 'd1', units = 64, activation = 'relu') %>%
+  layer_dense(name = 'd2', units = 128, activation = 'relu') %>%
+  layer_dense(name = 'd3', units = maxlen, activation = 'sigmoid')
+
+
+model %>% compile(
+  loss = "binary_crossentropy",
+  optimizer = "rmsprop"
+)
+
+summary(model)
+
+history <- model %>% fit(
+  x_train, x_train,
+  batch_size = batch_size,
+  epochs = epochs,
+  validation_data = list(x_test, x_test)
+)
+plot(history)
+
+layer_name <- 'e3'
+intermediate_layer_model <- keras_model(inputs = model$input,
+                                        outputs = get_layer(model, layer_name)$output)
+intermediate_output <- predict(intermediate_layer_model, x_train)
+```
+
+
+```{r}
+#input <- layer_input(shape=(maxlen))
+# embedding_weight = data.frame(word = names(tok$word_index), idx = t(data.frame(tok$word_index)))
+# embedding_weight = embedding_weight[order(embedding_weight$idx, decreasing = FALSE), ]
+# embedding_weight = merge(embedding_weight, word_vectors, by = 0, all.x = TRUE)
+# embedding_weight[is.na(embedding_weight)] <- 0
+# embedding_weight[, 1:3] <- NULL
+# 
+# 
+# model <- keras_model_sequential()
+# model %>%
+#   layer_embedding(length(tok$word_index) + 1, word_embedding_size, input_length = maxlen) %>%
+#   # layer_embedding(name = 'emb', length(tok$word_index) + 1, word_embedding_size,
+#   #                 weights=embedding_weight, input_length=maxlen, trainable=FALSE) %>%
+#   layer_dropout(0.2) %>%
+#   layer_conv_1d(
+#     filters = 250, kernel_size = 3, 
+#     padding = "valid", activation = "relu", strides = 1
+#   ) %>%
+#   layer_global_max_pooling_1d() %>%
+#   layer_dense(encoding_dim) %>%
+#   layer_dropout(0.2) %>%
+#   layer_activation(name = "activation", "relu") %>%
+#   layer_dense(1) %>%
+#   layer_activation("sigmoid")
+
+# K <- keras::backend()
+# get_activations <- K$`function`(list(get_layer(model, 'e1')$input, K$learning_phase()), 
+#                                 list(get_layer(model, 'e3')$output))
+# activations <- data.frame(get_activations(list(x_train, 1)))
+```
+
