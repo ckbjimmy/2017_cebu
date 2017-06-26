@@ -10,7 +10,7 @@ output:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-setwd("~/Google Drive/_cebu/")  # need to set their own path or see below
+setwd("~/git/2017_cebu/")  # need to set their own path or see below
 
 .packages <- c("stringr", "tm", "SnowballC", "wordcloud", "ggplot2", "cluster", "fpc")
 
@@ -24,11 +24,11 @@ lapply(.packages, library, character.only=TRUE)
 
 ## Objectives
 
-Participants may leave this workshop with:
+Participants may leave this workshop with skills to:
 
 - Understand how to use basic regular expression syntax
 - Able to apply regular expression to extract features
-- Learn how to do preprocess textual raw data and transform into n-grams representation for downstream analysis
+- Learn how to do preprocess textual raw data and transform into bag-of-words/n-grams representation for downstream analysis
 
 
 ## Instructions

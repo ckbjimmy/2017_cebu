@@ -10,7 +10,7 @@ output:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-setwd("~/Google Drive/_cebu/")  # need to set their own path or see below
+setwd("~/git/2017_cebu/")  # need to set their own path or see below
 
 .packages <- c("tm", "SnowballC", "topicmodels", "tidytext", "caret", "rpart",
                "text2vec", "Rtsne")
@@ -31,7 +31,7 @@ if ("keras" %in% rownames(installed.packages()) == FALSE) {
 
 ## Objectives
 
-Participants may leave this workshop with:
+Participants may leave this workshop with skills to:
 
 - Able to use R to perform the topic modeling algorithm on the textual data
 - Understand the concept of word embedding representation and apply it in R
@@ -342,8 +342,7 @@ model %>%
 
 model %>% compile(
   loss = "binary_crossentropy",
-  optimizer = "adam",
-  metrics = "accuracy"
+  optimizer = "adam"
 )
 
 summary(model)
@@ -355,6 +354,7 @@ history <- model %>% fit(
   x_train, x_train,
   batch_size = batch_size,
   epochs = epochs,
+  shuffle = TRUE, 
   validation_data = list(x_test, x_test)
 )
 
@@ -413,8 +413,7 @@ model %>%
 
 model %>% compile(
   loss = "binary_crossentropy",
-  optimizer = "rmsprop",
-  metrics = "accuracy"
+  optimizer = "adadelta"
 )
 
 summary(model)
@@ -423,6 +422,7 @@ history <- model %>% fit(
   x_train, x_train,
   batch_size = batch_size,
   epochs = epochs,
+  shuffle = TRUE, 
   validation_data = list(x_test, x_test)
 )
 plot(history)
