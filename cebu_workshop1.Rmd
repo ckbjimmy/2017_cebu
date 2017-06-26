@@ -36,24 +36,22 @@ Participants may leave this workshop with skills to:
 **Before beginning**, please test to see if the Rmd file will compile on your system by clicking the "Knit HTML button" in R studio above. 
 
 
-## Introduction of Text Mining
+## Introduction of Biomedical Text Mining
 
-Much of the data in the electronic health record (EHR) is not well structured. For example, the user-generated data, such as clinical notes, radiology reports, pathology reports, and the up-to-date scientific literature in PubMed, are usually in the semi-strucutred or unstructured natural language text. Unlike the structured data, text mining techniques are neccessary for the less structured data to parse and extract useful (or specific) information from them for further analysis and data modeling.  
+Much of data in the electronic health record (EHR) are not well structured. For example, the user-generated data, such as clinical notes, radiology reports, pathology reports, and the up-to-date scientific literature in PubMed, are usually semi-structured or unstructured natural language texts. To parse and extract useful (or specific) information from the semi-structured or unstructured data for further analysis and data modeling, text mining techniques are necessary.  
 
-In this workshop, we will first learn how to use regular expressions to do pattern matching in the text. Next, we will utilize all the information in the text using bag-of-words and n-grams representations. Results of these techniques can be used for downstream applications, such as exploratory analysis or machine learning. We will use R language for the whole workshop.  
-
-
-## Basic regular expression in R 
-
-Regular expressions are a method of searching for patterns and are implemented in many languages. The specific syntax used in each language may vary, but the concepts are the same (courtesy by Dr. Matthieu Komorowsky). Here we would use R to do regular expression for pattern matching.
-
-For the definition and background theory of regular expression, please refer to the introduction slides [(http://web.mit.edu/hackl/www/lab/turkshop/slides/regex-cheatsheet.pdf)](http://web.mit.edu/hackl/www/lab/turkshop/slides/regex-cheatsheet.pdf).  
+In this workshop, we will first learn how to use regular expression to do pattern matching in the free text. Next, we will utilize all the information in the text using bag-of-words and n-grams language models. Results of these techniques can be used for downstream applications, such as performing exploratory analysis or building machine learning models. We will use R language for the workshop.  
 
 
-## Pattern matching
+## Regular expression  
+
+Regular expression is a method of pattern matching based on formal computational language, and is implemented in many languages. The specific syntax used in each language may vary, but the concepts are the same. Here we would use R to do regular expression for pattern matching. For the definition and background theory of regular expression, please refer to the introduction slides [(http://web.mit.edu/hackl/www/lab/turkshop/slides/regex-cheatsheet.pdf)](http://web.mit.edu/hackl/www/lab/turkshop/slides/regex-cheatsheet.pdf).  
+
+
+### Basic regular expression in R 
 #### (courtesy by Dr. Matthieu Komorowsky)
 
-To visualize how regular expressions work, we will use the website: [https://regex101.com/](https://regex101.com/). Please paste the following text into the “Test String” search box:
+To visualize how regular expressions work, we will use the website: [https://regex101.com/](https://regex101.com/). Please paste the following text into the "Test String"" search box:
 
 ```
 LISINOpril 40 MG PO Daily
@@ -71,12 +69,27 @@ Lisinopril captopril
 and try the following regex rules:
 
 1. `pril`
-2. `*pril`
+2. `.*pril`
 3. `[a-z]*pril`
 4. `[A-Za-z]*pril`
-5. `[A-Za-z]*pril ` (with a space character after `pril`)
+5. `[A-Za-z]*pril ` (there is a space character after `pril`)
 
-Observe the result. What pattern in the text can you match using the above five rules? What if you want to match only (1) two items with lisinopril, or (2) two beta blockers (end with -lol)?  
+Observe results. What patterns in the text can you match using the above five rules? What if you want to match only  
+
+(1) four items with lisinopril, or  
+(2) two beta blockers (end with -lol)?  
+
+### Answer
+
+(1) `LlIiSsIiNnOoPpRrIiLl`  
+(2) `[A-Za-z]*lol`
+
+You may use the following cheetsheet to match the pattern that you want to try!  
+
+![](img/regex.png)
+
+**More regular expressions, courtesy by [Dave Child](https://www.cheatography.com/davechild/cheat-sheets/regular-expressions/pdf/)**
+
 
 Now let's go to R. We first store our data into a vector `item`.  
 
@@ -188,7 +201,9 @@ gsub("(.*BP \\(mm Hg\\): )([0-9]+)(/[0-9]+\n.*)", "\\2", text)
 Now that we have a basic understanding of how regular expressions work, we will apply it to a note file. We'd like to load the real data into R environment. The data we used here is [**PhysioNet Deidentified Medical Text**](https://physionet.org/works/DeidentifiedMedicalText/) maintained by MIT Laboratory of Computational Physiology. The single file (`id.txt`) includes 2434 nursing records in free text. We used regular expression to match the pattern for splitting a huge single file into 2434 notes. 
 
 ```{r}
-data <- readChar("id.txt", file.info("id.txt")$size)
+f <- "https://raw.githubusercontent.com/ckbjimmy/2017_cebu/master/data/id.txt"
+
+data <- readChar(f, file.info(f)$size)
 data <- gsub("\n\n\\|\\|\\|\\|END_OF_RECORD\n\nSTART_OF_RECORD=[0-9]+\\|\\|\\|\\|[0-9]+\\|\\|\\|\\|\n", " [split] ", data)
 data <- gsub("\n\n\\|\\|\\|\\|END_OF_RECORD\n\n", "", data)
 data <- strsplit(data, " \\[split\\] ")
@@ -253,7 +268,9 @@ In the previous section, we used regular expressions for pattern matching. Here 
 Here we downloaded publicly available 431 clinical notes and reports from [iDASH Clinical Notes and Reports Repository](https://idash-data.ucsd.edu/community/45/), and annotated the documents with the suitable document theme by two clinicians (Weng, 2017). 
 
 ```{r}
-idash <- read.table("idash.txt", sep = "\t", header = FALSE, comment.char="", stringsAsFactors = FALSE)
+f <- "https://raw.githubusercontent.com/ckbjimmy/2017_cebu/master/data/idash.txt"
+
+idash <- read.table(f, sep = "\t", header = FALSE, comment.char="", stringsAsFactors = FALSE)
 data <- idash$V1
 label <- as.factor(idash$V2)
 ```
@@ -360,7 +377,9 @@ clusplot(as.matrix(d), km$cluster, color=T, shade=T, labels=2, lines=0)
 Now we try to play with the [**PhysioNet Deidentified Medical Text**](https://physionet.org/works/DeidentifiedMedicalText/). 
 
 ```{r}
-x <- readChar("id.txt", file.info("id.txt")$size)
+f <- "https://raw.githubusercontent.com/ckbjimmy/2017_cebu/master/data/id.txt"
+
+x <- readChar("data/id.txt", file.info("data/id.txt")$size)
 x <- gsub("\n\n\\|\\|\\|\\|END_OF_RECORD\n\nSTART_OF_RECORD=[0-9]+\\|\\|\\|\\|[0-9]+\\|\\|\\|\\|\n", " [split] ", x)
 x <- gsub("\n\n\\|\\|\\|\\|END_OF_RECORD\n\n", "", x)
 x <- strsplit(x, " \\[split\\] ")

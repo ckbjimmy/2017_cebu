@@ -291,7 +291,7 @@ install_tensorflow()
 
 In this section, we want to implement a simple three layer autoencoder (only one hidden layer) for encoding hidden representation. Please visit [Stanford UFLDL Tutorial: Autoencoders](http://ufldl.stanford.edu/tutorial/unsupervised/Autoencoders/), or read the [Deep Learning Book Chapter 14: Autoencoders](http://www.deeplearningbook.org/contents/autoencoders.html) if you want to learn more theories about autoencoder.
 
-![Figure](workshop_autoenc.png)
+![](workshop_autoenc.png)
 
 **An autoencoder with one hidden layer ($L_2$), courtesy by [Stanford UFLDL Tutorial: Autoencoders](http://ufldl.stanford.edu/tutorial/unsupervised/Autoencoders/)**
 
