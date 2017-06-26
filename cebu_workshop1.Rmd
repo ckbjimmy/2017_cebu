@@ -19,6 +19,9 @@ if(length(.packages[!.inst]) > 0) {
   install.packages(.packages[!.inst], repos = "http://cran.rstudio.com")
 }
 lapply(.packages, library, character.only=TRUE)
+
+fpath <- "https://raw.githubusercontent.com/ckbjimmy/2017_cebu/master/data/id.txt"
+fpath_idash <- "https://raw.githubusercontent.com/ckbjimmy/2017_cebu/master/data/idash.txt"
 ```
 
 
@@ -201,9 +204,7 @@ gsub("(.*BP \\(mm Hg\\): )([0-9]+)(/[0-9]+\n.*)", "\\2", text)
 Now that we have a basic understanding of how regular expressions work, we will apply it to a note file. We'd like to load the real data into R environment. The data we used here is [**PhysioNet Deidentified Medical Text**](https://physionet.org/works/DeidentifiedMedicalText/) maintained by MIT Laboratory of Computational Physiology. The single file (`id.txt`) includes 2434 nursing records in free text. We used regular expression to match the pattern for splitting a huge single file into 2434 notes. 
 
 ```{r}
-f <- "https://raw.githubusercontent.com/ckbjimmy/2017_cebu/master/data/id.txt"
-
-data <- readChar(f, file.info(f)$size)
+data <- readChar(fpath, file.info(fpath)$size)
 data <- gsub("\n\n\\|\\|\\|\\|END_OF_RECORD\n\nSTART_OF_RECORD=[0-9]+\\|\\|\\|\\|[0-9]+\\|\\|\\|\\|\n", " [split] ", data)
 data <- gsub("\n\n\\|\\|\\|\\|END_OF_RECORD\n\n", "", data)
 data <- strsplit(data, " \\[split\\] ")
@@ -268,9 +269,7 @@ In the previous section, we used regular expressions for pattern matching. Here 
 Here we downloaded publicly available 431 clinical notes and reports from [iDASH Clinical Notes and Reports Repository](https://idash-data.ucsd.edu/community/45/), and annotated the documents with the suitable document theme by two clinicians (Weng, 2017). 
 
 ```{r}
-f <- "https://raw.githubusercontent.com/ckbjimmy/2017_cebu/master/data/idash.txt"
-
-idash <- read.table(f, sep = "\t", header = FALSE, comment.char="", stringsAsFactors = FALSE)
+idash <- read.table(fpath_idash, sep = "\t", header = FALSE, comment.char="", stringsAsFactors = FALSE)
 data <- idash$V1
 label <- as.factor(idash$V2)
 ```
@@ -377,9 +376,7 @@ clusplot(as.matrix(d), km$cluster, color=T, shade=T, labels=2, lines=0)
 Now we try to play with the [**PhysioNet Deidentified Medical Text**](https://physionet.org/works/DeidentifiedMedicalText/). 
 
 ```{r}
-f <- "https://raw.githubusercontent.com/ckbjimmy/2017_cebu/master/data/id.txt"
-
-x <- readChar("data/id.txt", file.info("data/id.txt")$size)
+x <- readChar(fpath, file.info(fpath)$size)
 x <- gsub("\n\n\\|\\|\\|\\|END_OF_RECORD\n\nSTART_OF_RECORD=[0-9]+\\|\\|\\|\\|[0-9]+\\|\\|\\|\\|\n", " [split] ", x)
 x <- gsub("\n\n\\|\\|\\|\\|END_OF_RECORD\n\n", "", x)
 x <- strsplit(x, " \\[split\\] ")
