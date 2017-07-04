@@ -25,8 +25,6 @@ if(length(.packages[!.inst]) > 0) {
 lapply(.packages, library, character.only=TRUE)
 
 # file paths of sample data
-fpath <- "https://raw.githubusercontent.com/ckbjimmy/2017_cebu/master/data/id.txt"
-download.file(url=fpath, destfile='id.txt', method='curl')
 fpath <- "https://raw.githubusercontent.com/ckbjimmy/2017_cebu/master/data/idash.txt"
 download.file(url=fpath, destfile='idash.txt', method='curl')
 ```
@@ -229,9 +227,9 @@ gsub("(.*Height: \\(in\\) )([0-9]{2})(\n.*)", "\\2", text)
 gsub("(.*BP \\(mm Hg\\): )([0-9]+)(/[0-9]+\n.*)", "\\2", text)
 ```
 
-Now that we have a basic understanding of how regular expressions work, we will apply it to the sample note file. We'd like to load the real data into R environment. The data we used here is [**PhysioNet Deidentified Medical Text**](https://physionet.org/works/DeidentifiedMedicalText/) maintained by MIT Laboratory of Computational Physiology. The single file (`id.txt`) includes 2434 nursing records in free text format. In this chunk of codes, we used regular expression for splitting a huge single file into 2434 notes.  
+**[Please register and request for the dataset from PhysioNet website after the workshop if you are interested in this dataset!]** Now that we have a basic understanding of how regular expressions work, we will apply it to the sample note file. We'd like to load the real data into R environment. The data we used here is [**PhysioNet Deidentified Medical Text**](https://physionet.org/works/DeidentifiedMedicalText/) maintained by MIT Laboratory of Computational Physiology. The single file (`id.txt`) includes 2434 nursing records in free text format. In this chunk of codes, we used regular expression for splitting a huge single file into 2434 notes.  
 
-```{r}
+```{r eval=F}
 # read the file
 data <- readChar("id.txt", file.info("id.txt")$size)
 # replace "||||END_OF_RECORD [change line] START_OF_RECORD=number||||number||||" to "[split]"
@@ -265,7 +263,7 @@ Neuro- ...(the data we want)... .
 
 These patterns are useful for extracting neurological exam data. We can first use `grepl` to identify the index of matched strings. Then we use `gsub` to extract targeted data. The bar (`|`) means OR operation. The result can be used as a feature for further analysis.  
 
-```{r}
+```{r eval=F}
 has_neuro <- grepl("(Neuro:|NEURO:|Neuro=|Neuro-)", data, perl=TRUE)
 neuro <- gsub("(.*Neuro:|.*NEURO:|.*Neuro=|.*Neuro-)(.*?)(\\.$|\n.*)", "\\2", data[has_neuro])
 # show the first six results
@@ -279,7 +277,7 @@ p.s. matching patterns include `CV:`, `C/V:`, `CV=`, `CV-`, `cv:`
 
 ### Answer  
 
-```{r}
+```{r eval=F}
 has_cv <- grepl("(CV:|C/V:|CV=|CV-|cv:)", data, perl=TRUE)
 cv <- gsub("(.*CV:|.*C/V:|.*CV=|.*CV-|.*cv:)(.*?)(\\.$|\n.*)", "\\2", data[has_cv])
 head(cv)
@@ -439,11 +437,19 @@ clusplot(as.matrix(d), km$cluster, color=T, shade=T, labels=2, lines=0)
 
 However, the plot shows that the performance of clustering is not that good. We will use other language modeling techniques to make it better in the next workshop.  
 
+
 ### Exercise
 
-Now we try to work on the [**PhysioNet Deidentified Medical Text**](https://physionet.org/works/DeidentifiedMedicalText/).  
+After getting the acccess to the [**PhysioNet Deidentified Medical Text**](https://physionet.org/works/DeidentifiedMedicalText/), you can try to run the following script, and use the dataset to create an n-grams model with unigram + bigram + trigram, find  
 
-```{r}
+1. How many terms/phrases has frequency >= 200?  
+2. How many terms/phrases has correlation > 0.6 with the term "ventricular"?  
+
+You may also apply the following code to your own data.  
+
+### Answer
+
+```{r eval=F}
 x <- readChar("id.txt", file.info("id.txt")$size)
 x <- gsub("\n\n\\|\\|\\|\\|END_OF_RECORD\n\nSTART_OF_RECORD=[0-9]+\\|\\|\\|\\|[0-9]+\\|\\|\\|\\|\n", " [split] ", x)
 x <- gsub("\n\n\\|\\|\\|\\|END_OF_RECORD\n\n", "", x)
@@ -451,14 +457,7 @@ x <- strsplit(x, " \\[split\\] ")
 x <- x[[1]]
 ```
 
-Please use this dataset to create an n-grams model with unigram + bigram + trigram, find  
-
-1. How many terms/phrases has frequency >= 200?  
-2. How many terms/phrases has correlation > 0.6 with the term "ventricular"?  
-
-### Answer
-
-```{r}
+```{r eval=F}
 library(tm)
 library(SnowballC)
 corpus <- Corpus(VectorSource(x))
